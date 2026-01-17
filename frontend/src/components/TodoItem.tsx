@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Todo } from '@/types/todo';
+import { getPriorityColor, getPriorityBgColor } from './PrioritySelector';
 
 interface TodoItemProps {
   todo: Todo;
@@ -118,14 +119,68 @@ export default function TodoItem({ todo, onToggle, onDelete, onEdit }: TodoItemP
             </motion.p>
           )}
 
-          <div className="flex items-center gap-2 mt-3">
+          <div className="flex items-center flex-wrap gap-2 mt-3">
+            {/* Priority badge */}
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${getPriorityBgColor(todo.priority)} ${getPriorityColor(todo.priority)}`}>
+              {todo.priority === 'high' && '!'} {todo.priority}
+            </span>
+
+            {/* Status badge */}
             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
               todo.completed
                 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                : 'bg-gray-100 dark:bg-gray-900/30 text-gray-600 dark:text-gray-400'
             }`}>
               {todo.completed ? '✓ Done' : '○ Pending'}
             </span>
+
+            {/* Due date with overdue indicator */}
+            {todo.due_date && (
+              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                todo.is_overdue
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+              }`}>
+                {todo.is_overdue && '! '}
+                {new Date(todo.due_date).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </span>
+            )}
+
+            {/* Recurrence indicator */}
+            {todo.recurrence_rule && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">
+                🔄 {todo.recurrence_rule}
+              </span>
+            )}
+
+            {/* Reminder indicator */}
+            {todo.reminder_time && !todo.completed && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                🔔 {new Date(todo.reminder_time).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </span>
+            )}
+
+            {/* Tags */}
+            {todo.tags && todo.tags.length > 0 && todo.tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400"
+              >
+                #{tag.name}
+              </span>
+            ))}
+
+            {/* Created date */}
             <span className="text-xs text-gray-400 dark:text-gray-500">
               {new Date(todo.created_at).toLocaleDateString('en-US', {
                 month: 'short',

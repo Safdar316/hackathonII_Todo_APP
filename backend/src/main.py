@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.routes.todos import router as todos_router
+from src.routes.tags import router as tags_router
 from src.database import create_db_and_tables
 
 
@@ -33,6 +34,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(todos_router)
+app.include_router(tags_router)
 
 
 @app.get("/")

@@ -2,7 +2,11 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TodoCreate } from '@/types/todo';
+import { TodoCreate, Priority, RecurrenceRule } from '@/types/todo';
+import PrioritySelector from './PrioritySelector';
+import DateTimePicker, { formatDateForApi } from './DateTimePicker';
+import TagInput from './TagInput';
+import RecurrenceSelector from './RecurrenceSelector';
 
 interface TodoFormProps {
   onSubmit: (data: TodoCreate) => Promise<void>;
@@ -14,6 +18,11 @@ interface TodoFormProps {
 export default function TodoForm({ onSubmit }: TodoFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<Priority>('medium');
+  const [dueDate, setDueDate] = useState<Date | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [recurrence, setRecurrence] = useState<RecurrenceRule | null>(null);
+  const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ title?: string; description?: string }>({});
   const [isFocused, setIsFocused] = useState(false);
@@ -47,9 +56,19 @@ export default function TodoForm({ onSubmit }: TodoFormProps) {
       await onSubmit({
         title: title.trim(),
         description: description.trim() || null,
+        priority,
+        due_date: formatDateForApi(dueDate),
+        tags: tags.length > 0 ? tags : undefined,
+        recurrence_rule: recurrence,
+        reminder_time: formatDateForApi(reminderTime),
       });
       setTitle('');
       setDescription('');
+      setPriority('medium');
+      setDueDate(null);
+      setTags([]);
+      setRecurrence(null);
+      setReminderTime(null);
       setErrors({});
     } finally {
       setIsSubmitting(false);
@@ -105,6 +124,85 @@ export default function TodoForm({ onSubmit }: TodoFormProps) {
           <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
             {title.length}/200
           </p>
+        </div>
+
+        {/* Priority selector */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            Priority
+          </label>
+          <PrioritySelector
+            value={priority}
+            onChange={setPriority}
+            disabled={isSubmitting}
+          />
+        </div>
+
+        {/* Due date picker */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            Due Date <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <DateTimePicker
+            value={dueDate}
+            onChange={(date) => {
+              setDueDate(date);
+              // Clear recurrence if due date is removed
+              if (!date) {
+                setRecurrence(null);
+                setReminderTime(null);
+              }
+            }}
+            placeholder="Select due date..."
+            disabled={isSubmitting}
+            minDate={new Date()}
+          />
+        </div>
+
+        {/* Recurrence selector */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            Repeat <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <RecurrenceSelector
+            value={recurrence}
+            onChange={setRecurrence}
+            disabled={isSubmitting}
+            hasDueDate={!!dueDate}
+          />
+        </div>
+
+        {/* Reminder time picker */}
+        {dueDate && (
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              Reminder <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <DateTimePicker
+              value={reminderTime}
+              onChange={setReminderTime}
+              placeholder="Set reminder..."
+              disabled={isSubmitting}
+              minDate={new Date()}
+              maxDate={dueDate}
+            />
+            <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+              Reminder must be before or at the due date
+            </p>
+          </div>
+        )}
+
+        {/* Tags input */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            Tags <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <TagInput
+            value={tags}
+            onChange={setTags}
+            disabled={isSubmitting}
+            placeholder="Add tags..."
+          />
         </div>
 
         {/* Description textarea */}

@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Todo, TodoCreate, TodoUpdate } from '@/types/todo';
-import { fetchTodos, createTodo, updateTodo, deleteTodo } from '@/lib/api';
+import { Todo, TodoCreate, TodoUpdate, TodoFilters } from '@/types/todo';
+import { fetchTodos, createTodo, updateTodo, deleteTodo, completeTodo } from '@/lib/api';
+import { useReminders } from '@/hooks/useReminders';
 import TodoItem from './TodoItem';
 import TodoForm from './TodoForm';
 import EmptyState from './EmptyState';
 import LoadingSpinner from './LoadingSpinner';
 import ErrorMessage from './ErrorMessage';
 import EditTodoModal from './EditTodoModal';
+import FilterPanel from './FilterPanel';
 
 // Stagger animation variants for page load
 const containerVariants = {
@@ -28,7 +30,7 @@ const itemVariants = {
 };
 
 /**
- * TodoList component that manages todos with full CRUD operations and page load animation.
+ * TodoList component that manages todos with full CRUD operations and filtering.
  */
 export default function TodoList() {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -37,12 +39,30 @@ export default function TodoList() {
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [filters, setFilters] = useState<TodoFilters>({
+    sort_by: 'created_at',
+    sort_order: 'desc',
+  });
 
-  const loadTodos = async () => {
+  // Initialize reminders hook
+  const { permission, isSupported, requestPermission, scheduleReminder } = useReminders();
+
+  // Schedule reminders for loaded todos
+  useEffect(() => {
+    if (permission === 'granted') {
+      todos.forEach((todo) => {
+        if (todo.reminder_time && !todo.completed) {
+          scheduleReminder(todo);
+        }
+      });
+    }
+  }, [todos, permission, scheduleReminder]);
+
+  const loadTodos = useCallback(async (currentFilters: TodoFilters) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchTodos();
+      const data = await fetchTodos(currentFilters);
       setTodos(data);
       setHasLoaded(true);
     } catch (err) {
@@ -50,16 +70,21 @@ export default function TodoList() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadTodos();
-  }, []);
+    loadTodos(filters);
+  }, [filters, loadTodos]);
+
+  const handleFilterChange = (newFilters: TodoFilters) => {
+    setFilters(newFilters);
+  };
 
   const handleCreateTodo = async (data: TodoCreate) => {
     try {
       const newTodo = await createTodo(data);
-      setTodos((prev) => [newTodo, ...prev]);
+      // Refetch to ensure proper sorting/filtering
+      loadTodos(filters);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create todo. Please try again.');
       throw err;
@@ -67,16 +92,39 @@ export default function TodoList() {
   };
 
   const handleToggleTodo = async (id: number, completed: boolean) => {
-    // Optimistic update
+    const todo = todos.find((t) => t.id === id);
+
+    // For recurring tasks being completed, use completeTodo API
+    if (completed && todo?.recurrence_rule) {
+      try {
+        const result = await completeTodo(id);
+        // Refetch to get the new instance and updated list
+        loadTodos(filters);
+        // Show success message if a new instance was created
+        if (result.next_instance) {
+          // Optionally show a toast or notification here
+          console.log('Recurring task completed, next instance created:', result.next_instance);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to complete recurring todo. Please try again.');
+      }
+      return;
+    }
+
+    // Optimistic update for non-recurring tasks
     const previousTodos = [...todos];
     setTodos((prev) =>
-      prev.map((todo) =>
-        todo.id === id ? { ...todo, completed } : todo
+      prev.map((t) =>
+        t.id === id ? { ...t, completed } : t
       )
     );
 
     try {
       await updateTodo(id, { completed });
+      // Refetch if filtering by completed status to update list
+      if (filters.completed !== undefined) {
+        loadTodos(filters);
+      }
     } catch (err) {
       // Rollback on error
       setTodos(previousTodos);
@@ -125,10 +173,19 @@ export default function TodoList() {
 
   const clearError = () => setError(null);
 
-  if (loading) {
+  const hasActiveFilters =
+    filters.search ||
+    filters.completed !== undefined ||
+    filters.priority !== undefined ||
+    (filters.tags && filters.tags.length > 0) ||
+    filters.due_from ||
+    filters.due_to;
+
+  if (loading && !hasLoaded) {
     return (
       <>
         <TodoForm onSubmit={handleCreateTodo} />
+        <FilterPanel filters={filters} onFilterChange={handleFilterChange} />
         <LoadingSpinner />
       </>
     );
@@ -138,18 +195,67 @@ export default function TodoList() {
     <>
       <TodoForm onSubmit={handleCreateTodo} />
 
+      {/* Notification permission banner */}
+      {isSupported && permission === 'default' && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🔔</span>
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  Enable notifications
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Get reminded about your tasks on time
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={requestPermission}
+              className="px-4 py-2 text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors"
+            >
+              Enable
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      <FilterPanel filters={filters} onFilterChange={handleFilterChange} />
+
       {error && (
         <ErrorMessage
           message={error}
           onRetry={() => {
             clearError();
-            loadTodos();
+            loadTodos(filters);
           }}
         />
       )}
 
       {todos.length === 0 ? (
-        <EmptyState />
+        hasActiveFilters ? (
+          <motion.div
+            className="text-center py-12"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <p className="text-gray-500 dark:text-gray-400 mb-4">
+              No todos match your filters
+            </p>
+            <button
+              onClick={() => setFilters({ sort_by: 'created_at', sort_order: 'desc' })}
+              className="text-primary-500 hover:text-primary-600 font-medium"
+            >
+              Clear filters
+            </button>
+          </motion.div>
+        ) : (
+          <EmptyState />
+        )
       ) : (
         <motion.div
           className="space-y-3"
