@@ -2,7 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Todo, TodoUpdate } from '@/types/todo';
+import { Todo, TodoUpdate, Priority, RecurrenceRule } from '@/types/todo';
+import PrioritySelector from './PrioritySelector';
+import DateTimePicker, { parseDate, formatDateForApi } from './DateTimePicker';
+import TagInput from './TagInput';
+import RecurrenceSelector from './RecurrenceSelector';
 
 interface EditTodoModalProps {
   todo: Todo | null;
@@ -18,6 +22,11 @@ interface EditTodoModalProps {
 export default function EditTodoModal({ todo, isOpen, onClose, onSave }: EditTodoModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<Priority>('medium');
+  const [dueDate, setDueDate] = useState<Date | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [recurrence, setRecurrence] = useState<RecurrenceRule | null>(null);
+  const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ title?: string; description?: string }>({});
 
@@ -26,6 +35,11 @@ export default function EditTodoModal({ todo, isOpen, onClose, onSave }: EditTod
     if (todo && isOpen) {
       setTitle(todo.title);
       setDescription(todo.description || '');
+      setPriority(todo.priority);
+      setDueDate(parseDate(todo.due_date));
+      setTags(todo.tags.map((t) => t.name));
+      setRecurrence(todo.recurrence_rule);
+      setReminderTime(parseDate(todo.reminder_time));
       setErrors({});
     }
   }, [todo, isOpen]);
@@ -71,6 +85,11 @@ export default function EditTodoModal({ todo, isOpen, onClose, onSave }: EditTod
       await onSave(todo.id, {
         title: title.trim(),
         description: description.trim() || null,
+        priority,
+        due_date: formatDateForApi(dueDate),
+        tags: tags.length > 0 ? tags : [],
+        recurrence_rule: recurrence,
+        reminder_time: formatDateForApi(reminderTime),
       });
       onClose();
     } finally {
@@ -144,6 +163,78 @@ export default function EditTodoModal({ todo, isOpen, onClose, onSave }: EditTod
                 <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                   {title.length}/200 characters
                 </p>
+              </div>
+
+              {/* Priority selector */}
+              <div>
+                <label className="block text-sm sm:text-base font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Priority
+                </label>
+                <PrioritySelector
+                  value={priority}
+                  onChange={setPriority}
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              {/* Due date picker */}
+              <div>
+                <label className="block text-sm sm:text-base font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Due Date
+                </label>
+                <DateTimePicker
+                  value={dueDate}
+                  onChange={(date) => {
+                    setDueDate(date);
+                    if (!date) {
+                      setRecurrence(null);
+                      setReminderTime(null);
+                    }
+                  }}
+                  placeholder="Select due date..."
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              {/* Recurrence selector */}
+              <div>
+                <label className="block text-sm sm:text-base font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Repeat
+                </label>
+                <RecurrenceSelector
+                  value={recurrence}
+                  onChange={setRecurrence}
+                  disabled={isSubmitting}
+                  hasDueDate={!!dueDate}
+                />
+              </div>
+
+              {/* Reminder time picker */}
+              {dueDate && (
+                <div>
+                  <label className="block text-sm sm:text-base font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    Reminder
+                  </label>
+                  <DateTimePicker
+                    value={reminderTime}
+                    onChange={setReminderTime}
+                    placeholder="Set reminder..."
+                    disabled={isSubmitting}
+                    maxDate={dueDate}
+                  />
+                </div>
+              )}
+
+              {/* Tags input */}
+              <div>
+                <label className="block text-sm sm:text-base font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Tags
+                </label>
+                <TagInput
+                  value={tags}
+                  onChange={setTags}
+                  disabled={isSubmitting}
+                />
               </div>
 
               {/* Description textarea */}

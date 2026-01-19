@@ -1,0 +1,456 @@
+openapi: 3.1.0
+info:
+  title: Todo API - Phase II
+  description: |
+    RESTful API for the Full-Stack Todo Application with Phase II features.
+    Includes priority management, tags, search, filtering, sorting, recurring tasks, and reminders.
+  version: 2.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+tags:
+  - name: todos
+    description: Todo CRUD operations with filtering and sorting
+  - name: tags
+    description: Tag management operations
+
+paths:
+  /:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Welcome to the Todo API"
+                  docs:
+                    type: string
+                    example: "/docs"
+
+  /todos:
+    get:
+      summary: List todos with filtering and sorting
+      operationId: listTodos
+      tags:
+        - todos
+      parameters:
+        - name: search
+          in: query
+          description: Case-insensitive search in title and description
+          schema:
+            type: string
+          example: "meeting"
+        - name: completed
+          in: query
+          description: Filter by completion status
+          schema:
+            type: boolean
+          example: false
+        - name: priority
+          in: query
+          description: Filter by priority level
+          schema:
+            $ref: '#/components/schemas/Priority'
+        - name: tags
+          in: query
+          description: Filter by tag names (comma-separated)
+          schema:
+            type: string
+          example: "work,urgent"
+        - name: due_from
+          in: query
+          description: Filter todos with due date on or after this date
+          schema:
+            type: string
+            format: date-time
+        - name: due_to
+          in: query
+          description: Filter todos with due date on or before this date
+          schema:
+            type: string
+            format: date-time
+        - name: sort_by
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+            enum: [created_at, due_date, priority, title]
+            default: created_at
+        - name: sort_order
+          in: query
+          description: Sort direction
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of todos matching filters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TodoResponse'
+
+    post:
+      summary: Create a new todo
+      operationId: createTodo
+      tags:
+        - todos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoCreate'
+      responses:
+        '201':
+          description: Todo created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /todos/{todo_id}:
+    parameters:
+      - name: todo_id
+        in: path
+        required: true
+        description: Unique todo identifier
+        schema:
+          type: integer
+          minimum: 1
+
+    get:
+      summary: Get a single todo by ID
+      operationId: getTodo
+      tags:
+        - todos
+      responses:
+        '200':
+          description: Todo details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoResponse'
+        '404':
+          description: Todo not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update a todo (partial update supported)
+      operationId: updateTodo
+      tags:
+        - todos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TodoUpdate'
+      responses:
+        '200':
+          description: Todo updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Todo not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete a todo
+      operationId: deleteTodo
+      tags:
+        - todos
+      responses:
+        '200':
+          description: Todo deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Todo deleted successfully"
+        '404':
+          description: Todo not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /todos/{todo_id}/complete:
+    parameters:
+      - name: todo_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+
+    post:
+      summary: Mark todo as complete (handles recurring task scheduling)
+      description: |
+        Marks the todo as complete. If the todo has a recurrence rule,
+        a new todo instance is automatically created with the next due date.
+      operationId: completeTodo
+      tags:
+        - todos
+      responses:
+        '200':
+          description: Todo completed. Returns the completed todo and optionally the new recurring instance.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  completed_todo:
+                    $ref: '#/components/schemas/TodoResponse'
+                  next_instance:
+                    $ref: '#/components/schemas/TodoResponse'
+                    description: Only present if todo was recurring
+        '404':
+          description: Todo not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tags:
+    get:
+      summary: List all tags
+      description: Returns all unique tags, optionally filtered by search term
+      operationId: listTags
+      tags:
+        - tags
+      parameters:
+        - name: search
+          in: query
+          description: Filter tags by name prefix (for autocomplete)
+          schema:
+            type: string
+          example: "wor"
+        - name: limit
+          in: query
+          description: Maximum number of tags to return
+          schema:
+            type: integer
+            default: 10
+            maximum: 100
+      responses:
+        '200':
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TagResponse'
+
+  /todos/reminders:
+    get:
+      summary: Get todos with pending reminders
+      description: Returns todos that have reminder_time set and are not yet completed
+      operationId: getPendingReminders
+      tags:
+        - todos
+      responses:
+        '200':
+          description: List of todos with pending reminders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TodoResponse'
+
+components:
+  schemas:
+    Priority:
+      type: string
+      enum: [low, medium, high]
+      description: Todo priority level
+
+    RecurrenceRule:
+      type: string
+      enum: [daily, weekly, monthly]
+      description: Recurrence pattern for repeating tasks
+
+    TagResponse:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          maxLength: 50
+          example: "work"
+
+    TodoCreate:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: "Complete project report"
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+          example: "Finish the quarterly report and send to management"
+        priority:
+          $ref: '#/components/schemas/Priority'
+          default: medium
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-01-20T17:00:00Z"
+        recurrence_rule:
+          $ref: '#/components/schemas/RecurrenceRule'
+          nullable: true
+        reminder_time:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-01-20T09:00:00Z"
+        tags:
+          type: array
+          items:
+            type: string
+            maxLength: 50
+          default: []
+          example: ["work", "urgent"]
+
+    TodoUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        completed:
+          type: boolean
+        priority:
+          $ref: '#/components/schemas/Priority'
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        recurrence_rule:
+          $ref: '#/components/schemas/RecurrenceRule'
+          nullable: true
+        reminder_time:
+          type: string
+          format: date-time
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+            maxLength: 50
+          description: Replaces all existing tags when provided
+
+    TodoResponse:
+      type: object
+      required:
+        - id
+        - title
+        - completed
+        - created_at
+        - priority
+        - tags
+        - is_overdue
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: "Complete project report"
+        description:
+          type: string
+          nullable: true
+          example: "Finish the quarterly report"
+        completed:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-01-16T10:30:00Z"
+        priority:
+          $ref: '#/components/schemas/Priority'
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-01-20T17:00:00Z"
+        recurrence_rule:
+          $ref: '#/components/schemas/RecurrenceRule'
+          nullable: true
+        reminder_time:
+          type: string
+          format: date-time
+          nullable: true
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagResponse'
+        is_overdue:
+          type: boolean
+          description: True if due_date is in the past and todo is not completed
+          example: false
+
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          example: "Todo not found"
